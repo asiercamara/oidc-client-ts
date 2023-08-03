@@ -3,6 +3,7 @@
 
 export { ErrorResponse, ErrorTimeout } from "./errors";
 export type { IFrameWindowParams, PopupWindowParams, RedirectParams } from "./navigators";
+export type { CordovaWindowParams } from "./cordova/navigators";
 export { Log, Logger } from "./utils";
 export type { ILogger, PopupWindowFeatures } from "./utils";
 export type { OidcAddressClaim, OidcStandardClaims, IdTokenClaims, JwtClaims } from "./Claims";
@@ -29,6 +30,7 @@ export type { StateStore } from "./StateStore";
 export { User } from "./User";
 export type { UserProfile } from "./User";
 export * from "./UserManager";
+export * from "./cordova/CordovaUserManager";
 export type {
     UserManagerEvents,
     SilentRenewErrorCallback,

@@ -45,6 +45,27 @@ export class CheckSessionIFrame {
     stop(): void;
 }
 
+// @public
+export class CordovaUserManager extends UserManager {
+    constructor(settings: UserManagerSettings);
+    // (undocumented)
+    signinCallback(url?: string): Promise<User | void>;
+    signinCordobaCallback(url?: string): Promise<void>;
+    // (undocumented)
+    signinCordova(args?: SigninCordovaArgs): Promise<void>;
+    // (undocumented)
+    signoutCallback(url?: string): Promise<void>;
+    signoutCordobaCallback(url?: string): Promise<void>;
+    // (undocumented)
+    signoutCordova(args?: SignoutCordovaArgs): Promise<void>;
+}
+
+// @public (undocumented)
+export interface CordovaWindowParams {
+    // (undocumented)
+    popupWindowTarget?: string;
+}
+
 // @public (undocumented)
 export interface CreateSigninRequestArgs extends Omit<SigninRequestArgs, "url" | "authority" | "client_id" | "redirect_uri" | "response_type" | "scope" | "state_data"> {
     // (undocumented)
@@ -559,6 +580,9 @@ export interface SessionStatus {
 }
 
 // @public (undocumented)
+export type SigninCordovaArgs = CordovaWindowParams & ExtraSigninRequestArgs;
+
+// @public (undocumented)
 export type SigningKey = Record<string, string | string[]>;
 
 // @public (undocumented)
@@ -712,6 +736,9 @@ export class SigninState extends State {
     // (undocumented)
     toStorageString(): string;
 }
+
+// @public (undocumented)
+export type SignoutCordovaArgs = CordovaWindowParams & ExtraSignoutRequestArgs;
 
 // @public (undocumented)
 export type SignoutPopupArgs = PopupWindowParams & ExtraSignoutRequestArgs;
