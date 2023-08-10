@@ -1,6 +1,6 @@
 {
   "name": "oidc-client-ts",
-  "version": "2.2.4_cordova",
+  "version": "2.2.4-cordova",
   "description": "OpenID Connect (OIDC) & OAuth2 client library",
   "repository": {
     "type": "git",
