@@ -67,10 +67,10 @@ export class CordovaWindow extends AbstractChildWindow {
                 logger.debug(`entro en message con event.data ${JSON.stringify(event.data)}`);
                 const eventData:string = event.data;
                 if (eventData?.match(/^oauth::/)) {
-                    console.log(`doSignin callback message event: ${eventData}`);
+                    logger.debug(`doSignin callback message event: ${eventData}`);
                     const data:AuthMesageData = JSON.parse(eventData.substring(7));
                     // Use data.code
-                    alert(JSON.stringify(data));
+                    logger.debug(JSON.stringify(data));
                     //data.code// state
                     const state = data.state;
                     if (!state) {
