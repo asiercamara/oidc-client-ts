@@ -45,7 +45,7 @@ export class CheckSessionIFrame {
     stop(): void;
 }
 
-// @public
+// @public (undocumented)
 export class CordovaUserManager extends UserManager {
     constructor(settings: UserManagerSettings);
     // (undocumented)

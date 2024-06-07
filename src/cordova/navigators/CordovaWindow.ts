@@ -37,7 +37,7 @@ export class CordovaWindow extends AbstractChildWindow {
                                                         && (window as any).cordova.require("cordova/plugin_list").metadata[CORDOVA_PLUGIN_ID]);
 
     public constructor({
-        popupWindowTarget = "oauth:externañ-auth'",
+        popupWindowTarget = "oauth:external-auth",
     }: CordovaWindowParams) {
         super();
         if (!CordovaWindow.hasCordovaPlugin()) {
@@ -58,16 +58,16 @@ export class CordovaWindow extends AbstractChildWindow {
         // en este caso no hay window ya que hay que hacerlo cada vez
         //this._window.location.replace(params.url);
 
-        window.open(params.url, this._popupWindowTarget);
+        //window.open(params.url, this._popupWindowTarget);
 
         const { url } = await new Promise<MessageData>((resolve) => {
-            
+            logger.debug("empieza promesa");
             const listener = (event: MessageEvent) => {
 
                 logger.debug(`entro en message con event.data ${JSON.stringify(event.data)}`);
                 const eventData:string = event.data;
                 if (eventData?.match(/^oauth::/)) {
-                    logger.debug(`doSignin callback message event: ${eventData}`);
+                    logger.debug(`doSignin/doSignout callback message event: ${eventData}`);
                     const data:AuthMesageData = JSON.parse(eventData.substring(7));
                     // Use data.code
                     logger.debug(JSON.stringify(data));
@@ -85,11 +85,14 @@ export class CordovaWindow extends AbstractChildWindow {
                     // para compatiblidad, este método debe devolver url callback finalmente
                     //  le valdrá un un fake o lo recreo entero
                     const fakeUrl = `blablabla://host/fakeCallback?code=${data.code}&state=${data.state}`;
+                    
                     const finalData:MessageData = {
                         source: "", // no es origin, es source que sería la ventana que origina mensaje
                         url: fakeUrl,
                         keepOpen: false,
                     };
+
+                    logger.debug(`devuelvo url redirección ${fakeUrl}`);
     
                     resolve(finalData);
 
@@ -97,6 +100,8 @@ export class CordovaWindow extends AbstractChildWindow {
 
             };
             window.addEventListener("message", listener, { once : true });
+            logger.debug(`Abrimos ventana con params ${params.url} y target ${this._popupWindowTarget}`);
+            window.open(params.url, this._popupWindowTarget);
         });
         logger.debug("got response from window");
 

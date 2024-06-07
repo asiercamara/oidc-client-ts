@@ -6,12 +6,21 @@ import { User } from "../User";
 import { type UserManagerSettings } from "../UserManagerSettings";
 import { CordovaNavigator, type CordovaWindowParams } from "./navigators";
 
+/**
+ * @public
+ */
 export type SigninCordovaArgs = CordovaWindowParams & ExtraSigninRequestArgs;
+/**
+ * @public
+ */
 export type SignoutCordovaArgs = CordovaWindowParams & ExtraSignoutRequestArgs;
 
 /**
  * Extended UserManager class that adds helpers and mobile capabilities
  * (ex: signinMobile, signoutMobile, MobileNavigator, MobileWindow)
+ */
+/**
+ * @public
  */
 export class CordovaUserManager extends UserManager {
     private static readonly SIGNIN_REQUEST_TYPE = "si:c";
