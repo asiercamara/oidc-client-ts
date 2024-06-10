@@ -84,14 +84,15 @@ export class CordovaUserManager extends UserManager {
     }
 
     // @override 
-    public async signinCallback(url = window.location.href): Promise<User | void> {
+    public async signinCallback(url = window.location.href): Promise<User | undefined> {
         const { state } = await this._client.readSigninResponseState(url);
         
         if (state.request_type == CordovaUserManager.SIGNIN_REQUEST_TYPE) {
-            return await this.signinCordobaCallback(url);
+            await this.signinCordobaCallback(url);
         } else {
-            return await super.signinCallback(url);
+            await super.signinCallback(url);
         }
+        return undefined;
     }
 
     // @override 
