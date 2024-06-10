@@ -3,9 +3,8 @@
 
 import { Logger } from "./utils";
 import { ErrorResponse } from "./errors";
-import { IFrameNavigator, type NavigateResponse, PopupNavigator, RedirectNavigator, type PopupWindowParams,
-    type IWindow, type IFrameWindowParams, type RedirectParams } from "./navigators";
-import { OidcClient, type CreateSigninRequestArgs, type CreateSignoutRequestArgs, type ProcessResourceOwnerPasswordCredentialsArgs } from "./OidcClient";
+import { type NavigateResponse, type PopupWindowParams, type IWindow, type IFrameWindowParams, type RedirectParams, RedirectNavigator, PopupNavigator, IFrameNavigator, type INavigator } from "./navigators";
+import { OidcClient, type CreateSigninRequestArgs, type CreateSignoutRequestArgs, type ProcessResourceOwnerPasswordCredentialsArgs, type UseRefreshTokenArgs } from "./OidcClient";
 import { type UserManagerSettings, UserManagerSettingsStore } from "./UserManagerSettings";
 import { User } from "./User";
 import { UserManagerEvents } from "./UserManagerEvents";
@@ -20,7 +19,7 @@ import type { SigninResponse } from "./SigninResponse";
 /**
  * @public
  */
-export type ExtraSigninRequestArgs = Pick<CreateSigninRequestArgs, "nonce" | "extraQueryParams" | "extraTokenParams" | "state" | "redirect_uri" | "prompt" | "acr_values" | "login_hint" | "scope" | "max_age" | "ui_locales" >;
+export type ExtraSigninRequestArgs = Pick<CreateSigninRequestArgs, "nonce" | "extraQueryParams" | "extraTokenParams" | "state" | "redirect_uri" | "prompt" | "acr_values" | "login_hint" | "scope" | "max_age" | "ui_locales" | "resource" | "url_state">;
 /**
  * @public
  */
@@ -72,32 +71,32 @@ export type SignoutPopupArgs = PopupWindowParams & ExtraSignoutRequestArgs;
 export type SignoutSilentArgs = IFrameWindowParams & ExtraSignoutRequestArgs;
 
 /**
- * Provides a higher level API for signing a user in, signing out, managing the user's claims returned from the OIDC provider,
- * and managing an access token returned from the OIDC/OAuth2 provider.
+ * Provides a higher level API for signing a user in, signing out, managing the user's claims returned from the identity provider,
+ * and managing an access token returned from the identity provider (OAuth2/OIDC).
  *
  * @public
  */
 export class UserManager {
-    /** Returns the settings used to configure the `UserManager`. */
+    /** Get the settings used to configure the `UserManager`. */
     public readonly settings: UserManagerSettingsStore;
     protected readonly _logger = new Logger("UserManager");
 
     protected readonly _client: OidcClient;
-    protected readonly _redirectNavigator: RedirectNavigator;
-    protected readonly _popupNavigator: PopupNavigator;
-    protected readonly _iframeNavigator: IFrameNavigator;
+    protected readonly _redirectNavigator: INavigator;
+    protected readonly _popupNavigator: INavigator;
+    protected readonly _iframeNavigator: INavigator;
     protected readonly _events: UserManagerEvents;
     protected readonly _silentRenewService: SilentRenewService;
     protected readonly _sessionMonitor: SessionMonitor | null;
 
-    public constructor(settings: UserManagerSettings) {
+    public constructor(settings: UserManagerSettings, redirectNavigator?: INavigator, popupNavigator?: INavigator, iframeNavigator?: INavigator) {
         this.settings = new UserManagerSettingsStore(settings);
 
         this._client = new OidcClient(settings);
 
-        this._redirectNavigator = new RedirectNavigator(this.settings);
-        this._popupNavigator = new PopupNavigator(this.settings);
-        this._iframeNavigator = new IFrameNavigator(this.settings);
+        this._redirectNavigator = redirectNavigator ?? new RedirectNavigator(this.settings);
+        this._popupNavigator = popupNavigator ?? new PopupNavigator(this.settings);
+        this._iframeNavigator = iframeNavigator ?? new IFrameNavigator(this.settings);
 
         this._events = new UserManagerEvents(this.settings);
         this._silentRenewService = new SilentRenewService(this);
@@ -114,25 +113,31 @@ export class UserManager {
 
     }
 
-    /** Returns an object used to register for events raised by the `UserManager`. */
+    /**
+     * Get object used to register for events raised by the `UserManager`.
+     */
     public get events(): UserManagerEvents {
         return this._events;
     }
 
-    /** Returns an object used to access the metadata configuration of the OIDC provider. */
+    /**
+     * Get object used to access the metadata configuration of the identity provider.
+     */
     public get metadataService(): MetadataService {
         return this._client.metadataService;
     }
 
     /**
-     * Returns promise to load the `User` object for the currently authenticated user.
+     * Load the `User` object for the currently authenticated user.
+     *
+     * @returns A promise
      */
     public async getUser(): Promise<User | null> {
         const logger = this._logger.create("getUser");
         const user = await this._loadUser();
         if (user) {
             logger.info("user loaded");
-            this._events.load(user, false);
+            await this._events.load(user, false);
             return user;
         }
 
@@ -141,17 +146,23 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to remove from any storage the currently authenticated user.
+     * Remove from any storage the currently authenticated user.
+     *
+     * @returns A promise
      */
     public async removeUser(): Promise<void> {
         const logger = this._logger.create("removeUser");
         await this.storeUser(null);
         logger.info("user removed from storage");
-        this._events.unload();
+        await this._events.unload();
     }
 
     /**
-     * Returns promise to trigger a redirect of the current window to the authorization endpoint.
+     * Trigger a redirect of the current window to the authorization endpoint.
+     *
+     * @returns A promise
+     *
+     * @throws `Error` In cases of wrong authentication.
      */
     public async signinRedirect(args: SigninRedirectArgs = {}): Promise<void> {
         this._logger.create("signinRedirect");
@@ -167,7 +178,12 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to process response from the authorization endpoint. The result of the promise is the authenticated `User`.
+     * Process the response (callback) from the authorization endpoint.
+     * It is recommended to use {@link UserManager.signinCallback} instead.
+     *
+     * @returns A promise containing the authenticated `User`.
+     *
+     * @see {@link UserManager.signinCallback}
      */
     public async signinRedirectCallback(url = window.location.href): Promise<User> {
         const logger = this._logger.create("signinRedirectCallback");
@@ -183,15 +199,16 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to process the signin with user/password. The result of the promise is the authenticated `User`.
+     * Trigger the signin with user/password.
      *
-     * Throws an ErrorResponse in case of wrong authentication.
+     * @returns A promise containing the authenticated `User`.
+     * @throws {@link ErrorResponse} In cases of wrong authentication.
      */
     public async signinResourceOwnerCredentials({
         username,
         password,
         skipUserInfo = false,
-    }: SigninResourceOwnerCredentialsArgs ) {
+    }: SigninResourceOwnerCredentialsArgs): Promise<User> {
         const logger = this._logger.create("signinResourceOwnerCredential");
 
         const signinResponse = await this._client.processResourceOwnerPasswordCredentials({ username, password, skipUserInfo, extraTokenParams: this.settings.extraTokenParams });
@@ -207,7 +224,10 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to trigger a request (via a popup window) to the authorization endpoint. The result of the promise is the authenticated `User`.
+     * Trigger a request (via a popup window) to the authorization endpoint.
+     *
+     * @returns A promise containing the authenticated `User`.
+     * @throws `Error` In cases of wrong authentication.
      */
     public async signinPopup(args: SigninPopupArgs = {}): Promise<User> {
         const logger = this._logger.create("signinPopup");
@@ -240,17 +260,23 @@ export class UserManager {
         return user;
     }
     /**
-     * Returns promise to notify the opening window of response from the authorization endpoint.
+     * Notify the opening window of response (callback) from the authorization endpoint.
+     * It is recommended to use {@link UserManager.signinCallback} instead.
+     *
+     * @returns A promise
+     *
+     * @see {@link UserManager.signinCallback}
      */
     public async signinPopupCallback(url = window.location.href, keepOpen = false): Promise<void> {
         const logger = this._logger.create("signinPopupCallback");
-        await this._popupNavigator.callback(url, keepOpen);
+        await this._popupNavigator.callback(url, { keepOpen });
         logger.info("success");
     }
 
     /**
-     * Returns promise to trigger a silent request (via an iframe) to the authorization endpoint.
-     * The result of the promise is the authenticated `User`.
+     * Trigger a silent request (via refresh token or an iframe) to the authorization endpoint.
+     *
+     * @returns A promise that contains the authenticated `User`.
      */
     public async signinSilent(args: SigninSilentArgs = {}): Promise<User | null> {
         const logger = this._logger.create("signinSilent");
@@ -263,7 +289,13 @@ export class UserManager {
         if (user?.refresh_token) {
             logger.debug("using refresh token");
             const state = new RefreshState(user as Required<User>);
-            return await this._useRefreshToken(state);
+            return await this._useRefreshToken({
+                state,
+                redirect_uri: requestArgs.redirect_uri,
+                resource: requestArgs.resource,
+                extraTokenParams: requestArgs.extraTokenParams,
+                timeoutInSeconds: silentRequestTimeoutInSeconds,
+            });
         }
 
         const url = this.settings.silent_redirect_uri;
@@ -297,20 +329,26 @@ export class UserManager {
         return user;
     }
 
-    protected async _useRefreshToken(state: RefreshState): Promise<User> {
+    protected async _useRefreshToken(args: UseRefreshTokenArgs): Promise<User> {
         const response = await this._client.useRefreshToken({
-            state,
+            ...args,
             timeoutInSeconds: this.settings.silentRequestTimeoutInSeconds,
         });
-        const user = new User({ ...state, ...response });
+        const user = new User({ ...args.state, ...response });
 
         await this.storeUser(user);
-        this._events.load(user);
+        await this._events.load(user);
         return user;
     }
 
     /**
-     * Returns promise to notify the parent window of response from the authorization endpoint.
+     *
+     * Notify the parent window of response (callback) from the authorization endpoint.
+     * It is recommended to use {@link UserManager.signinCallback} instead.
+     *
+     * @returns A promise
+     *
+     * @see {@link UserManager.signinCallback}
      */
     public async signinSilentCallback(url = window.location.href): Promise<void> {
         const logger = this._logger.create("signinSilentCallback");
@@ -318,20 +356,41 @@ export class UserManager {
         logger.info("success");
     }
 
-    public async signinCallback(url = window.location.href): Promise<User | void> {
+    /**
+     * Process any response (callback) from the authorization endpoint, by dispatching the request_type
+     * and executing one of the following functions:
+     * - {@link UserManager.signinRedirectCallback}
+     * - {@link UserManager.signinPopupCallback}
+     * - {@link UserManager.signinSilentCallback}
+     *
+     * @throws `Error` If request_type is unknown or signout cannot be processed.
+     */
+    public async signinCallback(url = window.location.href): Promise<User | undefined> {
         const { state } = await this._client.readSigninResponseState(url);
         switch (state.request_type) {
             case "si:r":
                 return await this.signinRedirectCallback(url);
             case "si:p":
-                return await this.signinPopupCallback(url);
+                await this.signinPopupCallback(url);
+                break;
             case "si:s":
-                return await this.signinSilentCallback(url);
+                await this.signinSilentCallback(url);
+                break;
             default:
                 throw new Error("invalid response_type in state");
         }
+        return undefined;
     }
 
+    /**
+     * Process any response (callback) from the end session endpoint, by dispatching the request_type
+     * and executing one of the following functions:
+     * - {@link UserManager.signoutRedirectCallback}
+     * - {@link UserManager.signoutPopupCallback}
+     * - {@link UserManager.signoutSilentCallback}
+     *
+     * @throws `Error` If request_type is unknown or signout cannot be processed.
+     */
     public async signoutCallback(url = window.location.href, keepOpen = false): Promise<void> {
         const { state } = await this._client.readSignoutResponseState(url);
         if (!state) {
@@ -354,7 +413,9 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to query OP for user's current signin status. Returns object with session_state and subject identifier.
+     * Query OP for user's current signin status.
+     *
+     * @returns A promise object with session_state and subject identifier.
      */
     public async querySessionStatus(args: QuerySessionStatusArgs = {}): Promise<SessionStatus | null> {
         const logger = this._logger.create("querySessionStatus");
@@ -388,7 +449,6 @@ export class UserManager {
                 return {
                     session_state: signinResponse.session_state,
                     sub: signinResponse.profile.sub,
-                    sid: signinResponse.profile.sid,
                 };
             }
 
@@ -459,13 +519,15 @@ export class UserManager {
 
         await this.storeUser(user);
         logger.debug("user stored");
-        this._events.load(user);
+        await this._events.load(user);
 
         return user;
     }
 
     /**
-     * Returns promise to trigger a redirect of the current window to the end session endpoint.
+     * Trigger a redirect of the current window to the end session endpoint.
+     *
+     * @returns A promise
      */
     public async signoutRedirect(args: SignoutRedirectArgs = {}): Promise<void> {
         const logger = this._logger.create("signoutRedirect");
@@ -483,7 +545,12 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to process response from the end session endpoint.
+     * Process response (callback) from the end session endpoint.
+     * It is recommended to use {@link UserManager.signoutCallback} instead.
+     *
+     * @returns A promise containing signout response
+     *
+     * @see {@link UserManager.signoutCallback}
      */
     public async signoutRedirectCallback(url = window.location.href): Promise<SignoutResponse> {
         const logger = this._logger.create("signoutRedirectCallback");
@@ -493,7 +560,9 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to trigger a redirect of a popup window window to the end session endpoint.
+     * Trigger a redirect of a popup window to the end session endpoint.
+     *
+     * @returns A promise
      */
     public async signoutPopup(args: SignoutPopupArgs = {}): Promise<void> {
         const logger = this._logger.create("signoutPopup");
@@ -520,11 +589,16 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to process response from the end session endpoint from a popup window.
+     * Process response (callback) from the end session endpoint from a popup window.
+     * It is recommended to use {@link UserManager.signoutCallback} instead.
+     *
+     * @returns A promise
+     *
+     * @see {@link UserManager.signoutCallback}
      */
     public async signoutPopupCallback(url = window.location.href, keepOpen = false): Promise<void> {
         const logger = this._logger.create("signoutPopupCallback");
-        await this._popupNavigator.callback(url, keepOpen);
+        await this._popupNavigator.callback(url, { keepOpen });
         logger.info("success");
     }
 
@@ -558,6 +632,7 @@ export class UserManager {
             return await handle.navigate({
                 url: signoutRequest.url,
                 state: signoutRequest.state?.id,
+                scriptOrigin: this.settings.iframeScriptOrigin,
             });
         }
         catch (err) {
@@ -575,7 +650,9 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to trigger a silent request (via an iframe) to the end session endpoint.
+     * Trigger a silent request (via an iframe) to the end session endpoint.
+     *
+     * @returns A promise
      */
     public async signoutSilent(args: SignoutSilentArgs = {}): Promise<void> {
         const logger = this._logger.create("signoutSilent");
@@ -601,7 +678,12 @@ export class UserManager {
     }
 
     /**
-     * Returns promise to notify the parent window of response from the end session endpoint.
+     * Notify the parent window of response (callback) from the end session endpoint.
+     * It is recommended to use {@link UserManager.signoutCallback} instead.
+     *
+     * @returns A promise
+     *
+     * @see {@link UserManager.signoutCallback}
      */
     public async signoutSilentCallback(url = window.location.href): Promise<void> {
         const logger = this._logger.create("signoutSilentCallback");
@@ -639,7 +721,7 @@ export class UserManager {
 
         await this.storeUser(user);
         logger.debug("user stored");
-        this._events.load(user);
+        await this._events.load(user);
     }
 
     /**

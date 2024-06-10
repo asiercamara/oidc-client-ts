@@ -2,7 +2,8 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 export { ErrorResponse, ErrorTimeout } from "./errors";
-export type { IFrameWindowParams, PopupWindowParams, RedirectParams } from "./navigators";
+
+export type { INavigator, IFrameWindowParams, IWindow, NavigateParams, NavigateResponse, PopupWindowParams, RedirectParams } from "./navigators";
 export type { CordovaWindowParams } from "./cordova/navigators";
 export { Log, Logger } from "./utils";
 export type { ILogger, PopupWindowFeatures } from "./utils";
@@ -20,9 +21,11 @@ export type { OidcClientSettings, SigningKey, ExtraHeader } from "./OidcClientSe
 export type { OidcMetadata } from "./OidcMetadata";
 export { SessionMonitor } from "./SessionMonitor";
 export type { SessionStatus } from "./SessionStatus";
-export type { SigninRequest, SigninRequestArgs } from "./SigninRequest";
+export type { SigninRequest, SigninRequestCreateArgs } from "./SigninRequest";
+export type { RefreshState } from "./RefreshState";
 export { SigninResponse } from "./SigninResponse";
 export { SigninState } from "./SigninState";
+export type { SigninStateArgs, SigninStateCreateArgs } from "./SigninState";
 export type { SignoutRequest, SignoutRequestArgs } from "./SignoutRequest";
 export { SignoutResponse } from "./SignoutResponse";
 export { State } from "./State";

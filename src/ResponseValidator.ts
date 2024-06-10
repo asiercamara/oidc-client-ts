@@ -6,7 +6,7 @@ import { ErrorResponse } from "./errors";
 import type { MetadataService } from "./MetadataService";
 import { UserInfoService } from "./UserInfoService";
 import { TokenClient } from "./TokenClient";
-import type { OidcClientSettingsStore } from "./OidcClientSettings";
+import type { ExtraHeader, OidcClientSettingsStore } from "./OidcClientSettings";
 import type { SigninState } from "./SigninState";
 import type { SigninResponse } from "./SigninResponse";
 import type { State } from "./State";
@@ -30,13 +30,13 @@ export class ResponseValidator {
         protected readonly _claimsService: ClaimsService,
     ) {}
 
-    public async validateSigninResponse(response: SigninResponse, state: SigninState): Promise<void> {
+    public async validateSigninResponse(response: SigninResponse, state: SigninState, extraHeaders?: Record<string, ExtraHeader>): Promise<void> {
         const logger = this._logger.create("validateSigninResponse");
 
         this._processSigninState(response, state);
         logger.debug("state processed");
 
-        await this._processCode(response, state);
+        await this._processCode(response, state, extraHeaders);
         logger.debug("code processed");
 
         if (response.isOpenId) {
@@ -51,7 +51,7 @@ export class ResponseValidator {
     public async validateCredentialsResponse(response: SigninResponse, skipUserInfo: boolean): Promise<void> {
         const logger = this._logger.create("validateCredentialsResponse");
 
-        if (response.isOpenId) {
+        if (response.isOpenId && !!response.id_token) {
             this._validateIdTokenAttributes(response);
         }
         logger.debug("tokens validated");
@@ -133,6 +133,7 @@ export class ResponseValidator {
         // this is important for both success & error outcomes
         logger.debug("state validated");
         response.userState = state.data;
+        response.url_state = state.url_state;
         // if there's no scope on the response, then assume all scopes granted (per-spec) and copy over scopes from original request
         response.scope ??= state.scope;
 
@@ -168,7 +169,7 @@ export class ResponseValidator {
         logger.debug("user info claims received, updated profile:", response.profile);
     }
 
-    protected async _processCode(response: SigninResponse, state: SigninState): Promise<void> {
+    protected async _processCode(response: SigninResponse, state: SigninState, extraHeaders?: Record<string, ExtraHeader>): Promise<void> {
         const logger = this._logger.create("_processCode");
         if (response.code) {
             logger.debug("Validating code");
@@ -178,6 +179,7 @@ export class ResponseValidator {
                 code: response.code,
                 redirect_uri: state.redirect_uri,
                 code_verifier: state.code_verifier,
+                extraHeaders: extraHeaders,
                 ...state.extraTokenParams,
             });
             Object.assign(response, tokenResponse);

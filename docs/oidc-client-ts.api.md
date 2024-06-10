@@ -49,7 +49,7 @@ export class CheckSessionIFrame {
 export class CordovaUserManager extends UserManager {
     constructor(settings: UserManagerSettings);
     // (undocumented)
-    signinCallback(url?: string): Promise<User | void>;
+    signinCallback(url?: string): Promise<User | undefined>;
     signinCordobaCallback(url?: string): Promise<void>;
     // (undocumented)
     signinCordova(args?: SigninCordovaArgs): Promise<void>;
@@ -67,7 +67,7 @@ export interface CordovaWindowParams {
 }
 
 // @public (undocumented)
-export interface CreateSigninRequestArgs extends Omit<SigninRequestArgs, "url" | "authority" | "client_id" | "redirect_uri" | "response_type" | "scope" | "state_data"> {
+export interface CreateSigninRequestArgs extends Omit<SigninRequestCreateArgs, "url" | "authority" | "client_id" | "redirect_uri" | "response_type" | "scope" | "state_data"> {
     // (undocumented)
     redirect_uri?: string;
     // (undocumented)
@@ -90,6 +90,7 @@ export class ErrorResponse extends Error {
         error_uri?: string | null;
         userState?: unknown;
         session_state?: string | null;
+        url_state?: string;
     },
     form?: URLSearchParams | undefined);
     readonly error: string | null;
@@ -100,6 +101,8 @@ export class ErrorResponse extends Error {
     // (undocumented)
     readonly session_state: string | null;
     state?: unknown;
+    // (undocumented)
+    url_state?: string;
 }
 
 // @public
@@ -112,7 +115,7 @@ export class ErrorTimeout extends Error {
 export type ExtraHeader = string | (() => string);
 
 // @public (undocumented)
-export type ExtraSigninRequestArgs = Pick<CreateSigninRequestArgs, "nonce" | "extraQueryParams" | "extraTokenParams" | "state" | "redirect_uri" | "prompt" | "acr_values" | "login_hint" | "scope" | "max_age" | "ui_locales">;
+export type ExtraSigninRequestArgs = Pick<CreateSigninRequestArgs, "nonce" | "extraQueryParams" | "extraTokenParams" | "state" | "redirect_uri" | "prompt" | "acr_values" | "login_hint" | "scope" | "max_age" | "ui_locales" | "resource" | "url_state">;
 
 // @public (undocumented)
 export type ExtraSignoutRequestArgs = Pick<CreateSignoutRequestArgs, "extraQueryParams" | "state" | "id_token_hint" | "post_logout_redirect_uri">;
@@ -150,6 +153,14 @@ export interface ILogger {
 }
 
 // @public (undocumented)
+export interface INavigator {
+    // (undocumented)
+    callback(url: string, params?: unknown): Promise<void>;
+    // (undocumented)
+    prepare(params: unknown): Promise<IWindow>;
+}
+
+// @public (undocumented)
 export class InMemoryWebStorage implements Storage {
     // (undocumented)
     clear(): void;
@@ -163,6 +174,14 @@ export class InMemoryWebStorage implements Storage {
     removeItem(key: string): void;
     // (undocumented)
     setItem(key: string, value: string): void;
+}
+
+// @public (undocumented)
+export interface IWindow {
+    // (undocumented)
+    close(): void;
+    // (undocumented)
+    navigate(params: NavigateParams): Promise<NavigateResponse>;
 }
 
 // @public
@@ -264,6 +283,24 @@ export class MetadataService {
     resetSigningKeys(): void;
 }
 
+// @public (undocumented)
+export interface NavigateParams {
+    nonce?: string;
+    // (undocumented)
+    response_mode?: "query" | "fragment";
+    // (undocumented)
+    scriptOrigin?: string;
+    state?: string;
+    // (undocumented)
+    url: string;
+}
+
+// @public (undocumented)
+export interface NavigateResponse {
+    // (undocumented)
+    url: string;
+}
+
 // @public
 export interface OidcAddressClaim {
     country?: string;
@@ -285,7 +322,7 @@ export class OidcClient {
     // (undocumented)
     clearStaleState(): Promise<void>;
     // (undocumented)
-    createSigninRequest({ state, request, request_uri, request_type, id_token_hint, login_hint, skipUserInfo, nonce, response_type, scope, redirect_uri, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, extraQueryParams, extraTokenParams, }: CreateSigninRequestArgs): Promise<SigninRequest>;
+    createSigninRequest({ state, request, request_uri, request_type, id_token_hint, login_hint, skipUserInfo, nonce, url_state, response_type, scope, redirect_uri, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, extraQueryParams, extraTokenParams, }: CreateSigninRequestArgs): Promise<SigninRequest>;
     // (undocumented)
     createSignoutRequest({ state, id_token_hint, client_id, request_type, post_logout_redirect_uri, extraQueryParams, }?: CreateSignoutRequestArgs): Promise<SignoutRequest>;
     // (undocumented)
@@ -295,7 +332,7 @@ export class OidcClient {
     // (undocumented)
     processResourceOwnerPasswordCredentials({ username, password, skipUserInfo, extraTokenParams, }: ProcessResourceOwnerPasswordCredentialsArgs): Promise<SigninResponse>;
     // (undocumented)
-    processSigninResponse(url: string): Promise<SigninResponse>;
+    processSigninResponse(url: string, extraHeaders?: Record<string, ExtraHeader>): Promise<SigninResponse>;
     // (undocumented)
     processSignoutResponse(url: string): Promise<SignoutResponse>;
     // (undocumented)
@@ -317,7 +354,7 @@ export class OidcClient {
     // (undocumented)
     protected readonly _tokenClient: TokenClient;
     // (undocumented)
-    useRefreshToken({ state, timeoutInSeconds, }: UseRefreshTokenArgs): Promise<SigninResponse>;
+    useRefreshToken({ state, redirect_uri, resource, timeoutInSeconds, extraHeaders, extraTokenParams, }: UseRefreshTokenArgs): Promise<SigninResponse>;
     // Warning: (ae-forgotten-export) The symbol "ResponseValidator" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -332,8 +369,6 @@ export interface OidcClientSettings {
     client_id: string;
     // (undocumented)
     client_secret?: string;
-    // @deprecated (undocumented)
-    clockSkewInSeconds?: number;
     disablePKCE?: boolean;
     display?: string;
     extraHeaders?: Record<string, ExtraHeader>;
@@ -344,7 +379,9 @@ export interface OidcClientSettings {
     filterProtocolClaims?: boolean | string[];
     loadUserInfo?: boolean;
     max_age?: number;
-    mergeClaims?: boolean;
+    mergeClaimsStrategy?: {
+        array: "replace" | "merge";
+    };
     metadata?: Partial<OidcMetadata>;
     metadataSeed?: Partial<OidcMetadata>;
     // (undocumented)
@@ -353,8 +390,6 @@ export interface OidcClientSettings {
     prompt?: string;
     redirect_uri: string;
     refreshTokenAllowedScope?: string | undefined;
-    // @deprecated (undocumented)
-    refreshTokenCredentials?: "same-origin" | "include" | "omit";
     resource?: string | string[];
     response_mode?: "query" | "fragment";
     response_type?: string;
@@ -364,13 +399,11 @@ export interface OidcClientSettings {
     staleStateAgeInSeconds?: number;
     stateStore?: StateStore;
     ui_locales?: string;
-    // @deprecated (undocumented)
-    userInfoJwtIssuer?: "ANY" | "OP" | string;
 }
 
 // @public
 export class OidcClientSettingsStore {
-    constructor({ authority, metadataUrl, metadata, signingKeys, metadataSeed, client_id, client_secret, response_type, scope, redirect_uri, post_logout_redirect_uri, client_authentication, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, filterProtocolClaims, loadUserInfo, staleStateAgeInSeconds, clockSkewInSeconds, userInfoJwtIssuer, mergeClaims, disablePKCE, stateStore, refreshTokenCredentials, revokeTokenAdditionalContentTypes, fetchRequestCredentials, refreshTokenAllowedScope, extraQueryParams, extraTokenParams, extraHeaders, }: OidcClientSettings);
+    constructor({ authority, metadataUrl, metadata, signingKeys, metadataSeed, client_id, client_secret, response_type, scope, redirect_uri, post_logout_redirect_uri, client_authentication, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, filterProtocolClaims, loadUserInfo, staleStateAgeInSeconds, mergeClaimsStrategy, disablePKCE, stateStore, revokeTokenAdditionalContentTypes, fetchRequestCredentials, refreshTokenAllowedScope, extraQueryParams, extraTokenParams, extraHeaders, }: OidcClientSettings);
     // (undocumented)
     readonly acr_values: string | undefined;
     // (undocumented)
@@ -381,8 +414,6 @@ export class OidcClientSettingsStore {
     readonly client_id: string;
     // (undocumented)
     readonly client_secret: string | undefined;
-    // (undocumented)
-    readonly clockSkewInSeconds: number;
     // (undocumented)
     readonly disablePKCE: boolean;
     // (undocumented)
@@ -402,7 +433,9 @@ export class OidcClientSettingsStore {
     // (undocumented)
     readonly max_age: number | undefined;
     // (undocumented)
-    readonly mergeClaims: boolean;
+    readonly mergeClaimsStrategy: {
+        array: "replace" | "merge";
+    };
     // (undocumented)
     readonly metadata: Partial<OidcMetadata> | undefined;
     // (undocumented)
@@ -420,7 +453,7 @@ export class OidcClientSettingsStore {
     // (undocumented)
     readonly resource: string | string[] | undefined;
     // (undocumented)
-    readonly response_mode: "query" | "fragment";
+    readonly response_mode: "query" | "fragment" | undefined;
     // (undocumented)
     readonly response_type: string;
     // (undocumented)
@@ -435,11 +468,9 @@ export class OidcClientSettingsStore {
     readonly stateStore: StateStore;
     // (undocumented)
     readonly ui_locales: string | undefined;
-    // (undocumented)
-    readonly userInfoJwtIssuer: "ANY" | "OP" | string;
 }
 
-// @public (undocumented)
+// @public
 export interface OidcMetadata {
     acr_values_supported: string[];
     authorization_endpoint: string;
@@ -501,6 +532,7 @@ export interface OidcStandardClaims {
 export interface PopupWindowFeatures {
     // (undocumented)
     [k: string]: boolean | string | number | undefined;
+    closePopupWindowAfterInSeconds?: number;
     // (undocumented)
     height?: number;
     // (undocumented)
@@ -550,6 +582,29 @@ export interface RedirectParams {
     redirectTarget?: "top" | "self";
 }
 
+// @public
+export class RefreshState {
+    constructor(args: {
+        refresh_token: string;
+        id_token?: string;
+        session_state: string | null;
+        scope?: string;
+        profile: UserProfile;
+        state?: unknown;
+    });
+    readonly data?: unknown;
+    // (undocumented)
+    readonly id_token?: string;
+    // (undocumented)
+    readonly profile: UserProfile;
+    // (undocumented)
+    readonly refresh_token: string;
+    // (undocumented)
+    readonly scope?: string;
+    // (undocumented)
+    readonly session_state: string | null;
+}
+
 // @public (undocumented)
 export type RevokeTokensTypes = UserManagerSettings["revokeTokenTypes"];
 
@@ -565,7 +620,6 @@ export class SessionMonitor {
         session_state: string;
         profile: {
             sub: string;
-            sid: string;
         } | null;
     }) => Promise<void>;
     // (undocumented)
@@ -575,7 +629,6 @@ export class SessionMonitor {
 // @public (undocumented)
 export interface SessionStatus {
     session_state: string;
-    sid?: string;
     sub?: string;
 }
 
@@ -593,7 +646,8 @@ export type SigninRedirectArgs = RedirectParams & ExtraSigninRequestArgs;
 
 // @public (undocumented)
 export class SigninRequest {
-    constructor({ url, authority, client_id, redirect_uri, response_type, scope, state_data, response_mode, request_type, client_secret, nonce, resource, skipUserInfo, extraQueryParams, extraTokenParams, disablePKCE, ...optionalParams }: SigninRequestArgs);
+    // (undocumented)
+    static create({ url, authority, client_id, redirect_uri, response_type, scope, state_data, response_mode, request_type, client_secret, nonce, url_state, resource, skipUserInfo, extraQueryParams, extraTokenParams, disablePKCE, ...optionalParams }: SigninRequestCreateArgs): Promise<SigninRequest>;
     // (undocumented)
     readonly state: SigninState;
     // (undocumented)
@@ -601,7 +655,7 @@ export class SigninRequest {
 }
 
 // @public (undocumented)
-export interface SigninRequestArgs {
+export interface SigninRequestCreateArgs {
     // (undocumented)
     acr_values?: string;
     // (undocumented)
@@ -651,6 +705,8 @@ export interface SigninRequestArgs {
     ui_locales?: string;
     // (undocumented)
     url: string;
+    // (undocumented)
+    url_state?: string;
 }
 
 // @public (undocumented)
@@ -690,6 +746,8 @@ export class SigninResponse {
     readonly state: string | null;
     // (undocumented)
     token_type: string;
+    // (undocumented)
+    url_state?: string;
     userState: unknown;
 }
 
@@ -698,21 +756,6 @@ export type SigninSilentArgs = IFrameWindowParams & ExtraSigninRequestArgs;
 
 // @public (undocumented)
 export class SigninState extends State {
-    constructor(args: {
-        id?: string;
-        data?: unknown;
-        created?: number;
-        request_type?: string;
-        code_verifier?: string | boolean;
-        authority: string;
-        client_id: string;
-        redirect_uri: string;
-        scope: string;
-        client_secret?: string;
-        extraTokenParams?: Record<string, unknown>;
-        response_mode?: "query" | "fragment";
-        skipUserInfo?: boolean;
-    });
     // (undocumented)
     readonly authority: string;
     // (undocumented)
@@ -722,9 +765,11 @@ export class SigninState extends State {
     readonly code_challenge: string | undefined;
     readonly code_verifier: string | undefined;
     // (undocumented)
+    static create(args: SigninStateCreateArgs): Promise<SigninState>;
+    // (undocumented)
     readonly extraTokenParams: Record<string, unknown> | undefined;
     // (undocumented)
-    static fromStorageString(storageString: string): SigninState;
+    static fromStorageString(storageString: string): Promise<SigninState>;
     // (undocumented)
     readonly redirect_uri: string;
     // (undocumented)
@@ -736,6 +781,45 @@ export class SigninState extends State {
     // (undocumented)
     toStorageString(): string;
 }
+
+// @public (undocumented)
+export interface SigninStateArgs {
+    // (undocumented)
+    authority: string;
+    // (undocumented)
+    client_id: string;
+    // (undocumented)
+    client_secret?: string;
+    // (undocumented)
+    code_challenge?: string;
+    // (undocumented)
+    code_verifier?: string;
+    // (undocumented)
+    created?: number;
+    // (undocumented)
+    data?: unknown;
+    // (undocumented)
+    extraTokenParams?: Record<string, unknown>;
+    // (undocumented)
+    id?: string;
+    // (undocumented)
+    redirect_uri: string;
+    // (undocumented)
+    request_type?: string;
+    // (undocumented)
+    response_mode?: "query" | "fragment";
+    // (undocumented)
+    scope: string;
+    // (undocumented)
+    skipUserInfo?: boolean;
+    // (undocumented)
+    url_state?: string;
+}
+
+// @public (undocumented)
+export type SigninStateCreateArgs = Omit<SigninStateArgs, "code_verifier"> & {
+    code_verifier?: string | boolean;
+};
 
 // @public (undocumented)
 export type SignoutCordovaArgs = CordovaWindowParams & ExtraSignoutRequestArgs;
@@ -799,20 +883,23 @@ export class State {
         data?: unknown;
         created?: number;
         request_type?: string;
+        url_state?: string;
     });
     // (undocumented)
     static clearStaleState(storage: StateStore, age: number): Promise<void>;
     // (undocumented)
     readonly created: number;
-    readonly data: unknown | undefined;
+    readonly data?: unknown;
     // (undocumented)
-    static fromStorageString(storageString: string): State;
+    static fromStorageString(storageString: string): Promise<State>;
     // (undocumented)
     readonly id: string;
     // (undocumented)
     readonly request_type: string | undefined;
     // (undocumented)
     toStorageString(): string;
+    // (undocumented)
+    readonly url_state: string | undefined;
 }
 
 // @public (undocumented)
@@ -839,6 +926,7 @@ export class User {
         profile: UserProfile;
         expires_at?: number;
         userState?: unknown;
+        url_state?: string;
     });
     access_token: string;
     get expired(): boolean | undefined;
@@ -857,12 +945,20 @@ export class User {
     token_type: string;
     // (undocumented)
     toStorageString(): string;
+    // (undocumented)
+    readonly url_state?: string;
 }
 
 // @public (undocumented)
 export interface UseRefreshTokenArgs {
-    // Warning: (ae-forgotten-export) The symbol "RefreshState" needs to be exported by the entry point index.d.ts
-    //
+    // (undocumented)
+    extraHeaders?: Record<string, ExtraHeader>;
+    // (undocumented)
+    extraTokenParams?: Record<string, unknown>;
+    // (undocumented)
+    redirect_uri?: string;
+    // (undocumented)
+    resource?: string | string[];
     // (undocumented)
     state: RefreshState;
     // (undocumented)
@@ -874,7 +970,7 @@ export type UserLoadedCallback = (user: User) => Promise<void> | void;
 
 // @public
 export class UserManager {
-    constructor(settings: UserManagerSettings);
+    constructor(settings: UserManagerSettings, redirectNavigator?: INavigator, popupNavigator?: INavigator, iframeNavigator?: INavigator);
     // (undocumented)
     protected _buildUser(signinResponse: SigninResponse, verifySub?: string): Promise<User>;
     clearStaleState(): Promise<void>;
@@ -884,24 +980,18 @@ export class UserManager {
     // (undocumented)
     protected readonly _events: UserManagerEvents;
     getUser(): Promise<User | null>;
-    // Warning: (ae-forgotten-export) The symbol "IFrameNavigator" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    protected readonly _iframeNavigator: IFrameNavigator;
+    protected readonly _iframeNavigator: INavigator;
     // (undocumented)
     protected _loadUser(): Promise<User | null>;
     // (undocumented)
     protected readonly _logger: Logger;
     get metadataService(): MetadataService;
-    // Warning: (ae-forgotten-export) The symbol "PopupNavigator" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    protected readonly _popupNavigator: PopupNavigator;
+    protected readonly _popupNavigator: INavigator;
     querySessionStatus(args?: QuerySessionStatusArgs): Promise<SessionStatus | null>;
-    // Warning: (ae-forgotten-export) The symbol "RedirectNavigator" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    protected readonly _redirectNavigator: RedirectNavigator;
+    protected readonly _redirectNavigator: INavigator;
     removeUser(): Promise<void>;
     // (undocumented)
     protected _revokeInternal(user: User | null, types?: ("access_token" | "refresh_token")[]): Promise<void>;
@@ -910,12 +1000,9 @@ export class UserManager {
     // (undocumented)
     protected readonly _sessionMonitor: SessionMonitor | null;
     readonly settings: UserManagerSettingsStore;
-    // Warning: (ae-forgotten-export) The symbol "IWindow" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     protected _signin(args: CreateSigninRequestArgs, handle: IWindow, verifySub?: string): Promise<User>;
-    // (undocumented)
-    signinCallback(url?: string): Promise<User | void>;
+    signinCallback(url?: string): Promise<User | undefined>;
     // (undocumented)
     protected _signinEnd(url: string, verifySub?: string): Promise<User>;
     signinPopup(args?: SigninPopupArgs): Promise<User>;
@@ -925,13 +1012,10 @@ export class UserManager {
     signinResourceOwnerCredentials({ username, password, skipUserInfo, }: SigninResourceOwnerCredentialsArgs): Promise<User>;
     signinSilent(args?: SigninSilentArgs): Promise<User | null>;
     signinSilentCallback(url?: string): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "NavigateResponse" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     protected _signinStart(args: CreateSigninRequestArgs, handle: IWindow): Promise<NavigateResponse>;
     // (undocumented)
     protected _signout(args: CreateSignoutRequestArgs, handle: IWindow): Promise<SignoutResponse>;
-    // (undocumented)
     signoutCallback(url?: string, keepOpen?: boolean): Promise<void>;
     // (undocumented)
     protected _signoutEnd(url: string): Promise<SignoutResponse>;
@@ -952,7 +1036,7 @@ export class UserManager {
     // (undocumented)
     storeUser(user: User | null): Promise<void>;
     // (undocumented)
-    protected _useRefreshToken(state: RefreshState): Promise<User>;
+    protected _useRefreshToken(args: UseRefreshTokenArgs): Promise<User>;
     // (undocumented)
     protected get _userStoreKey(): string;
 }
@@ -967,17 +1051,17 @@ export class UserManagerEvents extends AccessTokenEvents {
     addUserSignedOut(cb: UserSignedOutCallback): () => void;
     addUserUnloaded(cb: UserUnloadedCallback): () => void;
     // (undocumented)
-    load(user: User, raiseEvent?: boolean): void;
+    load(user: User, raiseEvent?: boolean): Promise<void>;
     // (undocumented)
     protected readonly _logger: Logger;
     // @internal (undocumented)
-    _raiseSilentRenewError(e: Error): void;
+    _raiseSilentRenewError(e: Error): Promise<void>;
     // @internal (undocumented)
-    _raiseUserSessionChanged(): void;
+    _raiseUserSessionChanged(): Promise<void>;
     // @internal (undocumented)
-    _raiseUserSignedIn(): void;
+    _raiseUserSignedIn(): Promise<void>;
     // @internal (undocumented)
-    _raiseUserSignedOut(): void;
+    _raiseUserSignedOut(): Promise<void>;
     removeSilentRenewError(cb: SilentRenewErrorCallback): void;
     removeUserLoaded(cb: UserLoadedCallback): void;
     removeUserSessionChanged(cb: UserSessionChangedCallback): void;
@@ -985,7 +1069,7 @@ export class UserManagerEvents extends AccessTokenEvents {
     removeUserSignedOut(cb: UserSignedOutCallback): void;
     removeUserUnloaded(cb: UserUnloadedCallback): void;
     // (undocumented)
-    unload(): void;
+    unload(): Promise<void>;
 }
 
 // @public

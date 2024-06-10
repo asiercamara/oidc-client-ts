@@ -57,7 +57,7 @@ describe("IFrameWindow", () => {
                     .mockReturnValue({ location: { replace: replaceMock } } as unknown as WindowProxy);
 
                 subject.close();
-                expect(replaceMock).toBeCalledWith("about:blank");
+                expect(replaceMock).toHaveBeenCalledWith("about:blank");
             });
 
             it("should reset frame to null", () => {
@@ -135,7 +135,7 @@ describe("IFrameWindow", () => {
                 const frameWindow = new IFrameWindow({});
                 const promise = frameWindow.navigate({ state: fakeState, url: fakeUrl, scriptOrigin: args.passedOrigin });
 
-                promise.finally(() => promiseDone = true);
+                void promise.finally(() => promiseDone = true);
                 await flushPromises();
 
                 expect(promiseDone).toBe(false);
@@ -154,7 +154,7 @@ describe("IFrameWindow", () => {
                 const frameWindow = new IFrameWindow({});
                 const promise = frameWindow.navigate({ state: "diff_state", url: fakeUrl });
 
-                promise.finally(() => promiseDone = true);
+                void promise.finally(() => promiseDone = true);
                 await flushPromises();
 
                 expect(promiseDone).toBe(false);
@@ -174,7 +174,7 @@ describe("IFrameWindow", () => {
             [undefined, fakeWindowOrigin],
         ])("should call postMessage with appropriate parameters", (targetOrigin, expectedOrigin) => {
             IFrameWindow.notifyParent(messageData.url, targetOrigin);
-            expect(postMessageMock).toBeCalledWith(messageData, expectedOrigin);
+            expect(postMessageMock).toHaveBeenCalledWith(messageData, expectedOrigin);
         });
     });
 });

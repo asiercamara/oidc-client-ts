@@ -5,7 +5,7 @@ import { JwtUtils } from "./utils";
 import type { ErrorResponse } from "./errors";
 import type { JwtClaims } from "./Claims";
 import { OidcClient } from "./OidcClient";
-import { type OidcClientSettings, OidcClientSettingsStore } from "./OidcClientSettings";
+import { type ExtraHeader, type OidcClientSettings, OidcClientSettingsStore } from "./OidcClientSettings";
 import { SigninState } from "./SigninState";
 import { State } from "./State";
 import { SigninRequest } from "./SigninRequest";
@@ -87,6 +87,7 @@ describe("OidcClient", () => {
                 request: "req",
                 request_uri: "req_uri",
                 nonce: "rnd",
+                url_state: "url_state",
             });
 
             // assert
@@ -108,6 +109,7 @@ describe("OidcClient", () => {
             expect(url).toContain("request_uri=req_uri");
             expect(url).toContain("response_mode=fragment");
             expect(url).toContain("nonce=rnd");
+            expect(url.match(/state=.*%3Burl_state/)).toBeTruthy();
         });
 
         it("should pass state in place of data to SigninRequest", async () => {
@@ -128,6 +130,7 @@ describe("OidcClient", () => {
                 login_hint: "lh",
                 acr_values: "av",
                 resource: "res",
+                url_state: "url_state",
             });
 
             // assert
@@ -145,6 +148,7 @@ describe("OidcClient", () => {
             expect(url).toContain("login_hint=lh");
             expect(url).toContain("acr_values=av");
             expect(url).toContain("resource=res");
+            expect(url.match(/state=.*%3Burl_state/)).toBeTruthy();
         });
 
         it("should fail if implicit flow requested", async () => {
@@ -221,7 +225,7 @@ describe("OidcClient", () => {
             await subject.createSigninRequest(args);
 
             // assert
-            expect(setMock).toBeCalled();
+            expect(setMock).toHaveBeenCalled();
         });
     });
 
@@ -259,15 +263,15 @@ describe("OidcClient", () => {
 
         it("should deserialize stored state and return state and response", async () => {
             // arrange
-            const item = new SigninState({
+            const item = await SigninState.create({
                 id: "1",
                 authority: "authority",
                 client_id: "client",
                 redirect_uri: "http://app/cb",
                 scope: "scope",
                 request_type: "type",
-            }).toStorageString();
-            jest.spyOn(subject.settings.stateStore, "get").mockImplementation(() => Promise.resolve(item));
+            });
+            jest.spyOn(subject.settings.stateStore, "get").mockImplementation(() => Promise.resolve(item.toStorageString()));
 
             // act
             const { state, response } = await subject.readSigninResponseState("http://app/cb?state=1");
@@ -314,7 +318,7 @@ describe("OidcClient", () => {
 
         it("should deserialize stored state and call validator", async () => {
             // arrange
-            const item = new SigninState({
+            const item = await SigninState.create({
                 id: "1",
                 authority: "authority",
                 client_id: "client",
@@ -331,7 +335,32 @@ describe("OidcClient", () => {
             const response = await subject.processSigninResponse("http://app/cb?state=1");
 
             // assert
-            expect(validateSigninResponseMock).toBeCalledWith(response, item);
+            expect(validateSigninResponseMock).toHaveBeenCalledWith(response, item, undefined);
+        });
+
+        it("should pass on extraHeaders if supplied", async () => {
+            // arrange
+            const item = await SigninState.create({
+                id: "1",
+                authority: "authority",
+                client_id: "client",
+                redirect_uri: "http://app/cb",
+                scope: "scope",
+                request_type: "type",
+            });
+
+            const extraHeaders: Record<string, ExtraHeader> = { "foo": "bar" };
+
+            jest.spyOn(subject.settings.stateStore, "remove")
+                .mockImplementation(async () => item.toStorageString());
+            const validateSigninResponseMock = jest.spyOn(subject["_validator"], "validateSigninResponse")
+                .mockResolvedValue();
+
+            // act
+            const response = await subject.processSigninResponse("http://app/cb?state=1", extraHeaders);
+
+            // assert
+            expect(validateSigninResponseMock).toHaveBeenCalledWith(response, item, extraHeaders);
         });
     });
 
@@ -425,13 +454,14 @@ describe("OidcClient", () => {
             });
 
             // act
-            const response = await subject.useRefreshToken({ state });
+            const response = await subject.useRefreshToken({ state, resource: "resource" });
 
             // assert
             expect(exchangeRefreshTokenMock).toHaveBeenCalledWith( {
                 refresh_token: "refresh_token",
                 scope: "openid",
                 timeoutInSeconds: undefined,
+                resource: "resource",
             });
             expect(response).toBeInstanceOf(SigninResponse);
             expect(response).toMatchObject(tokenResponse);
@@ -508,6 +538,41 @@ describe("OidcClient", () => {
             await expect(subject.useRefreshToken({ state }))
                 // assert
                 .rejects.toThrow("sub in id_token does not match current sub");
+        });
+
+        it("should pass extraHeaders to tokenClient.exchangeRefreshToken if supplied", async () => {
+            // arrange
+            const tokenResponse = {
+                access_token: "new_access_token",
+            };
+            const exchangeRefreshTokenMock =
+                jest.spyOn(subject["_tokenClient"], "exchangeRefreshToken")
+                    .mockResolvedValue(tokenResponse);
+            jest.spyOn(JwtUtils, "decode").mockReturnValue({ sub: "sub" });
+            const state = new RefreshState({
+                refresh_token: "refresh_token",
+                id_token: "id_token",
+                session_state: "session_state",
+                scope: "openid",
+                profile: {} as UserProfile,
+            });
+            const extraHeaders: Record<string, ExtraHeader> = { "foo": "bar" };
+
+            // act
+            const response = await subject.useRefreshToken({ state, resource: "resource", extraHeaders: extraHeaders });
+
+            // assert
+            expect(exchangeRefreshTokenMock).toHaveBeenCalledWith( {
+                refresh_token: "refresh_token",
+                scope: "openid",
+                timeoutInSeconds: undefined,
+                resource: "resource",
+                extraHeaders: extraHeaders,
+            });
+            expect(response).toBeInstanceOf(SigninResponse);
+            expect(response).toMatchObject(tokenResponse);
+            expect(response).toHaveProperty("session_state", state.session_state);
+            expect(response).toHaveProperty("scope", state.scope);
         });
     });
 
@@ -643,7 +708,7 @@ describe("OidcClient", () => {
             });
 
             // assert
-            expect(setMock).toBeCalled();
+            expect(setMock).toHaveBeenCalled();
         });
 
         it("should not generate state if no data", async () => {
@@ -655,7 +720,7 @@ describe("OidcClient", () => {
             await subject.createSignoutRequest();
 
             // assert
-            expect(setMock).not.toBeCalled();
+            expect(setMock).not.toHaveBeenCalled();
         });
     });
 
@@ -736,7 +801,7 @@ describe("OidcClient", () => {
             const response = await subject.processSignoutResponse("http://app/cb?state=1&error=foo");
 
             // assert
-            expect(validateSignoutResponse).toBeCalledWith(response, item);
+            expect(validateSignoutResponse).toHaveBeenCalledWith(response, item);
         });
     });
 
@@ -801,7 +866,7 @@ describe("OidcClient", () => {
             const response = await subject.processSignoutResponse("http://app/cb?state=1");
 
             // assert
-            expect(validateSignoutResponse).toBeCalledWith(response, item);
+            expect(validateSignoutResponse).toHaveBeenCalledWith(response, item);
         });
 
         it("should call validator with state even if error in response", async () => {
@@ -820,7 +885,7 @@ describe("OidcClient", () => {
             const response = await subject.processSignoutResponse("http://app/cb?state=1&error=foo");
 
             // assert
-            expect(validateSignoutResponse).toBeCalledWith(response, item);
+            expect(validateSignoutResponse).toHaveBeenCalledWith(response, item);
         });
     });
 
@@ -834,7 +899,7 @@ describe("OidcClient", () => {
             await subject.clearStaleState();
 
             // assert
-            expect(clearStaleState).toBeCalled();
+            expect(clearStaleState).toHaveBeenCalled();
         });
     });
 
