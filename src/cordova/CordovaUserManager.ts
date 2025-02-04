@@ -2,6 +2,7 @@ import {
     type ExtraSigninRequestArgs, type ExtraSignoutRequestArgs, UserManager,
 } from "../UserManager";
 
+import type { SignoutResponse } from "../SignoutResponse";
 import { User } from "../User";
 import { type UserManagerSettings } from "../UserManagerSettings";
 import { CordovaNavigator, type CordovaWindowParams } from "./navigators";
@@ -96,7 +97,7 @@ export class CordovaUserManager extends UserManager {
     }
 
     // @override 
-    public async signoutCallback(url = window.location.href): Promise<void> {
+    public async signoutCallback(url = window.location.href): Promise<SignoutResponse | undefined> {
         const { state } = await this._client.readSignoutResponseState(url);
         if (!state) {
             return;

@@ -530,4 +530,59 @@ describe("OidcClientSettings", () => {
             expect(subject.extraHeaders).toEqual(extraHeaders);
         });
     });
+
+    describe("dpop", () => {
+        it("should not be defined by default", () => {
+            // act
+            const subject = new OidcClientSettingsStore({
+                authority: "authority",
+                client_id: "client",
+                redirect_uri: "redirect",
+            });
+
+            expect(subject.dpop).toBeUndefined();
+        });
+
+        it("should throw if dpop is configured without a store", () => {
+            // act
+            expect(() => new OidcClientSettingsStore({
+                authority: "authority",
+                client_id: "client",
+                redirect_uri: "redirect",
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                dpop: {
+                    bind_authorization_code: true,
+                },
+            })).toThrow("A DPoPStore is required when dpop is enabled");
+        });
+
+        describe("omitScopeWhenRequesting", () => {
+
+            it("should use default value", () => {
+                // act
+                const subject = new OidcClientSettingsStore({
+                    authority: "authority",
+                    client_id: "client",
+                    redirect_uri: "redirect",
+                });
+
+                // assert
+                expect(subject.omitScopeWhenRequesting).toEqual(false);
+            });
+
+            it("should return value from initial settings", () => {
+                // act
+                const subject = new OidcClientSettingsStore({
+                    authority: "authority",
+                    client_id: "client",
+                    redirect_uri: "redirect",
+                    omitScopeWhenRequesting: true,
+                });
+
+                // assert
+                expect(subject.omitScopeWhenRequesting).toEqual(true);
+            });
+        });
+    });
 });

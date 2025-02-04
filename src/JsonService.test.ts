@@ -6,6 +6,7 @@ import { JsonService } from "./JsonService";
 
 import { mocked } from "jest-mock";
 import type { ExtraHeader } from "./OidcClientSettings";
+import { ErrorDPoPNonce } from "./errors/ErrorDPoPNonce";
 
 describe("JsonService", () => {
     let subject: JsonService;
@@ -16,7 +17,6 @@ describe("JsonService", () => {
         "Custom-Header-1": "this-is-header-1",
         "Custom-Header-2": "this-is-header-2",
         "acCept" : "application/fake",
-        "AuthoriZation" : "not good",
         "Content-Type": "application/fail",
     };
     const dynamicExtraHeaders = {
@@ -25,7 +25,6 @@ describe("JsonService", () => {
             return "my-name-is-header-2";
         },
         "acCept" : () => "nothing",
-        "AuthoriZation" : () => "not good",
         "Content-Type": "application/fail",
     };
 
@@ -530,6 +529,24 @@ describe("JsonService", () => {
                 .rejects.toThrow("Invalid response Content-Type: text/html");
         });
 
+        it("should reject promise and throw ErrorDPoPNonce error when http response is 400 and response headers include dpop-nonce", async () => {
+            // arrange
+            const json = { foo: 1, bar: "test" };
+            mocked(fetch).mockResolvedValue({
+                status: 400,
+                ok: false,
+                headers: new Headers({
+                    "dpop-nonce": "some-nonce",
+                }),
+                text: () => Promise.resolve(JSON.stringify(json)),
+            } as Response);
+
+            // act
+            await expect(subject.postForm("http://test", { body: new URLSearchParams("payload=dummy") }))
+                // assert
+                .rejects.toThrow(ErrorDPoPNonce);
+        });
+
         it("should reject promise when http response is not 200", async () => {
             // arrange
             const json = {};
@@ -566,6 +583,88 @@ describe("JsonService", () => {
 
             // assert
             expect(result).toEqual(json);
+        });
+    });
+
+    describe("_appendExtraHeaders", () => {
+        it("should add extra static headers", () => {
+            // arrange
+            const headers = {
+                "Accept": "application/json",
+            };
+            subject["_extraHeaders"] = {
+                "foo": "bar",
+            };
+
+            // act
+            subject["_appendExtraHeaders"](headers);
+
+            // assert
+            expect(headers).toMatchObject({
+                "Accept": "application/json",
+                "foo": "bar",
+            });
+        });
+
+        it("should add extra dynamic headers", () => {
+            // arrange
+            const headers = {
+                "Accept": "application/json",
+            };
+            subject["_extraHeaders"] = {
+                "foo": () => {
+                    return "bar";
+                },
+            };
+
+            // act
+            subject["_appendExtraHeaders"](headers);
+
+            // assert
+            expect(headers).toMatchObject({
+                "Accept": "application/json",
+                "foo": "bar",
+            });
+        });
+
+        it("should skip protected special headers", () => {
+            // arrange
+            const headers = {
+                "Accept": "application/json",
+            };
+            subject["_extraHeaders"] = {
+                "foo": "bar",
+                "accept": "application/xml",
+            };
+
+            // act
+            subject["_appendExtraHeaders"](headers);
+
+            // assert
+            expect(headers).toMatchObject({
+                "Accept": "application/json",
+                "foo": "bar",
+            });
+        });
+
+        it("should skip override special headers", () => {
+            // arrange
+            const headers = {
+                "Authorization": "Bearer 1",
+            };
+            subject["_extraHeaders"] = {
+                "foo": "bar",
+                "Authorization": "Bearer 2",
+            };
+
+            // act
+            subject["_appendExtraHeaders"](headers);
+
+            // assert
+            expect(headers).toMatchObject({
+                "Authorization": "Bearer 1",
+                "foo": "bar",
+            });
         });
     });
 });

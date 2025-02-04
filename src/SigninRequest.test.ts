@@ -66,6 +66,18 @@ describe("SigninRequest", () => {
             expect(url).toContain("scope=openid");
         });
 
+        it("should not include scope if omitScopeWhenRequesting is true", async () => {
+            // arrange
+            settings.omitScopeWhenRequesting = true;
+
+            // act
+            subject = await SigninRequest.create(settings);
+            url = subject.url;
+
+            // assert
+            expect(url).not.toContain("scope");
+        });
+
         it("should include state", () => {
             // assert
             expect(url).toContain("state=" + subject.state.id);
@@ -279,6 +291,17 @@ describe("SigninRequest", () => {
 
             // assert
             expect(subject.url).toContain("state=" + subject.state.id + encodeURIComponent(URL_STATE_DELIMITER + "foo"));
+        });
+
+        it("should include dpop_jkt", async () => {
+            // arrange
+            settings.dpopJkt = "foo";
+
+            // act
+            subject = await SigninRequest.create(settings);
+
+            // assert
+            expect(subject.url).toContain("dpop_jkt=foo");
         });
     });
 });

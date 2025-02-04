@@ -5,6 +5,7 @@ import { WebStorageStateStore } from "./WebStorageStateStore";
 import type { OidcMetadata } from "./OidcMetadata";
 import type { StateStore } from "./StateStore";
 import { InMemoryWebStorage } from "./InMemoryWebStorage";
+import type { DPoPStore } from "./DPoPStore";
 
 const DefaultResponseType = "code";
 const DefaultScope = "openid";
@@ -20,6 +21,15 @@ export type SigningKey = Record<string, string | string[]>;
  * @public
  */
 export type ExtraHeader = string | (() => string);
+
+/**
+ * Optional DPoP settings
+ * @public
+ */
+export interface DPoPSettings {
+    bind_authorization_code?: boolean;
+    store: DPoPStore;
+}
 
 /**
  * The settings used to configure the {@link OidcClient}.
@@ -120,6 +130,11 @@ export interface OidcClientSettings {
     extraHeaders?: Record<string, ExtraHeader>;
 
     /**
+     * DPoP enabled or disabled
+     */
+    dpop?: DPoPSettings | undefined;
+
+    /**
      * Will check the content type header of the response of the revocation endpoint to match these passed values (default: [])
      */
     revokeTokenAdditionalContentTypes?: string[];
@@ -137,6 +152,17 @@ export interface OidcClientSettings {
      * Only scopes in this list will be passed in the token refresh request.
      */
     refreshTokenAllowedScope?: string | undefined;
+
+    /**
+     * Defines request timeouts globally across all requests made to the authorisation server
+     */
+    requestTimeoutInSeconds?: number | undefined;
+
+    /**
+     * https://datatracker.ietf.org/doc/html/rfc6749#section-3.3 describes behavior when omitting scopes from sign in requests
+     * If the IDP supports default scopes, this setting will ignore the scopes property passed to the config. (Default: false)
+     */
+    omitScopeWhenRequesting?: boolean;
 }
 
 /**
@@ -176,18 +202,21 @@ export class OidcClientSettingsStore {
     public readonly loadUserInfo: boolean;
     public readonly staleStateAgeInSeconds: number;
     public readonly mergeClaimsStrategy: { array: "replace" | "merge" };
+    public readonly omitScopeWhenRequesting: boolean;
 
     public readonly stateStore: StateStore;
 
     // extra
     public readonly extraQueryParams: Record<string, string | number | boolean>;
     public readonly extraTokenParams: Record<string, unknown>;
+    public readonly dpop: DPoPSettings | undefined;
     public readonly extraHeaders: Record<string, ExtraHeader>;
 
     public readonly revokeTokenAdditionalContentTypes?: string[];
     public readonly fetchRequestCredentials: RequestCredentials;
     public readonly refreshTokenAllowedScope: string | undefined;
     public readonly disablePKCE: boolean;
+    public readonly requestTimeoutInSeconds: number | undefined;
 
     public constructor({
         // metadata related
@@ -201,6 +230,7 @@ export class OidcClientSettingsStore {
         // behavior flags
         filterProtocolClaims = true,
         loadUserInfo = false,
+        requestTimeoutInSeconds,
         staleStateAgeInSeconds = DefaultStaleStateAgeInSeconds,
         mergeClaimsStrategy = { array: "replace" },
         disablePKCE = false,
@@ -213,6 +243,8 @@ export class OidcClientSettingsStore {
         extraQueryParams = {},
         extraTokenParams = {},
         extraHeaders = {},
+        dpop,
+        omitScopeWhenRequesting = false,
     }: OidcClientSettings) {
 
         this.authority = authority;
@@ -253,10 +285,12 @@ export class OidcClientSettingsStore {
         this.loadUserInfo = !!loadUserInfo;
         this.staleStateAgeInSeconds = staleStateAgeInSeconds;
         this.mergeClaimsStrategy = mergeClaimsStrategy;
+        this.omitScopeWhenRequesting = omitScopeWhenRequesting;
         this.disablePKCE = !!disablePKCE;
         this.revokeTokenAdditionalContentTypes = revokeTokenAdditionalContentTypes;
 
         this.fetchRequestCredentials = fetchRequestCredentials ? fetchRequestCredentials : "same-origin";
+        this.requestTimeoutInSeconds = requestTimeoutInSeconds;
 
         if (stateStore) {
             this.stateStore = stateStore;
@@ -271,5 +305,10 @@ export class OidcClientSettingsStore {
         this.extraQueryParams = extraQueryParams;
         this.extraTokenParams = extraTokenParams;
         this.extraHeaders = extraHeaders;
+
+        this.dpop = dpop;
+        if (this.dpop && !this.dpop?.store) {
+            throw new Error("A DPoPStore is required when dpop is enabled");
+        }
     }
 }

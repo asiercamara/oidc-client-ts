@@ -112,8 +112,9 @@ export class TokenClient {
         let basicAuth: string | undefined;
         switch (this._settings.client_authentication) {
             case "client_secret_basic":
-                if (!client_secret) {
+                if (client_secret === undefined || client_secret === null) {
                     logger.throw(new Error("A client_secret is required"));
+                    // eslint-disable-next-line @typescript-eslint/only-throw-error
                     throw null; // https://github.com/microsoft/TypeScript/issues/46972
                 }
                 basicAuth = CryptoUtils.generateBasicAuth(client_id, client_secret);
@@ -129,7 +130,14 @@ export class TokenClient {
         const url = await this._metadataService.getTokenEndpoint(false);
         logger.debug("got token endpoint");
 
-        const response = await this._jsonService.postForm(url, { body: params, basicAuth, initCredentials: this._settings.fetchRequestCredentials, extraHeaders });
+        const response = await this._jsonService.postForm(url, {
+            body: params,
+            basicAuth,
+            timeoutInSeconds: this._settings.requestTimeoutInSeconds,
+            initCredentials: this._settings.fetchRequestCredentials,
+            extraHeaders,
+        });
+
         logger.debug("got response");
 
         return response;
@@ -153,7 +161,10 @@ export class TokenClient {
             logger.throw(new Error("A client_id is required"));
         }
 
-        const params = new URLSearchParams({ grant_type, scope });
+        const params = new URLSearchParams({ grant_type });
+        if (!this._settings.omitScopeWhenRequesting) {
+            params.set("scope", scope);
+        }
         for (const [key, value] of Object.entries(args)) {
             if (value != null) {
                 params.set(key, value);
@@ -163,8 +174,9 @@ export class TokenClient {
         let basicAuth: string | undefined;
         switch (this._settings.client_authentication) {
             case "client_secret_basic":
-                if (!client_secret) {
+                if (client_secret === undefined || client_secret === null) {
                     logger.throw(new Error("A client_secret is required"));
+                    // eslint-disable-next-line @typescript-eslint/only-throw-error
                     throw null; // https://github.com/microsoft/TypeScript/issues/46972
                 }
                 basicAuth = CryptoUtils.generateBasicAuth(client_id, client_secret);
@@ -180,7 +192,7 @@ export class TokenClient {
         const url = await this._metadataService.getTokenEndpoint(false);
         logger.debug("got token endpoint");
 
-        const response = await this._jsonService.postForm(url, { body: params, basicAuth, initCredentials: this._settings.fetchRequestCredentials });
+        const response = await this._jsonService.postForm(url, { body: params, basicAuth, timeoutInSeconds: this._settings.requestTimeoutInSeconds, initCredentials: this._settings.fetchRequestCredentials });
         logger.debug("got response");
 
         return response;
@@ -219,8 +231,9 @@ export class TokenClient {
         let basicAuth: string | undefined;
         switch (this._settings.client_authentication) {
             case "client_secret_basic":
-                if (!client_secret) {
+                if (client_secret === undefined || client_secret === null) {
                     logger.throw(new Error("A client_secret is required"));
+                    // eslint-disable-next-line @typescript-eslint/only-throw-error
                     throw null; // https://github.com/microsoft/TypeScript/issues/46972
                 }
                 basicAuth = CryptoUtils.generateBasicAuth(client_id, client_secret);
@@ -268,7 +281,7 @@ export class TokenClient {
             params.set("client_secret", this._settings.client_secret);
         }
 
-        await this._jsonService.postForm(url, { body: params });
+        await this._jsonService.postForm(url, { body: params, timeoutInSeconds: this._settings.requestTimeoutInSeconds });
         logger.debug("got response");
     }
 }

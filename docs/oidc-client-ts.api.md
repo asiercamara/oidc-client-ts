@@ -15,13 +15,13 @@ export class AccessTokenEvents {
     addAccessTokenExpired(cb: AccessTokenCallback): () => void;
     addAccessTokenExpiring(cb: AccessTokenCallback): () => void;
     // (undocumented)
-    load(container: User): void;
+    load(container: User): Promise<void>;
     // (undocumented)
     protected readonly _logger: Logger;
     removeAccessTokenExpired(cb: AccessTokenCallback): void;
     removeAccessTokenExpiring(cb: AccessTokenCallback): void;
     // (undocumented)
-    unload(): void;
+    unload(): Promise<void>;
 }
 
 // @public (undocumented)
@@ -54,7 +54,7 @@ export class CordovaUserManager extends UserManager {
     // (undocumented)
     signinCordova(args?: SigninCordovaArgs): Promise<void>;
     // (undocumented)
-    signoutCallback(url?: string): Promise<void>;
+    signoutCallback(url?: string): Promise<SignoutResponse | undefined>;
     signoutCordobaCallback(url?: string): Promise<void>;
     // (undocumented)
     signoutCordova(args?: SignoutCordovaArgs): Promise<void>;
@@ -69,6 +69,8 @@ export interface CordovaWindowParams {
 // @public (undocumented)
 export interface CreateSigninRequestArgs extends Omit<SigninRequestCreateArgs, "url" | "authority" | "client_id" | "redirect_uri" | "response_type" | "scope" | "state_data"> {
     // (undocumented)
+    dpopJkt?: string;
+    // (undocumented)
     redirect_uri?: string;
     // (undocumented)
     response_type?: string;
@@ -81,6 +83,15 @@ export interface CreateSigninRequestArgs extends Omit<SigninRequestCreateArgs, "
 export type CreateSignoutRequestArgs = Omit<SignoutRequestArgs, "url" | "state_data"> & {
     state?: unknown;
 };
+
+// @public (undocumented)
+export class DPoPState {
+    constructor(keys: CryptoKeyPair, nonce?: string | undefined);
+    // (undocumented)
+    readonly keys: CryptoKeyPair;
+    // (undocumented)
+    nonce?: string | undefined;
+}
 
 // @public
 export class ErrorResponse extends Error {
@@ -158,6 +169,28 @@ export interface INavigator {
     callback(url: string, params?: unknown): Promise<void>;
     // (undocumented)
     prepare(params: unknown): Promise<IWindow>;
+}
+
+// Warning: (ae-forgotten-export) The symbol "DPoPStore" needs to be exported by the entry point index.d.ts
+//
+// @public
+export class IndexedDbDPoPStore implements DPoPStore {
+    // (undocumented)
+    createStore<T>(dbName: string, storeName: string): Promise<(txMode: IDBTransactionMode, callback: (store: IDBObjectStore) => T | PromiseLike<T>) => Promise<T>>;
+    // (undocumented)
+    readonly _dbName: string;
+    // (undocumented)
+    get(key: string): Promise<DPoPState>;
+    // (undocumented)
+    getAllKeys(): Promise<string[]>;
+    // (undocumented)
+    promisifyRequest<T = undefined>(request: IDBRequest<T> | IDBTransaction): Promise<T>;
+    // (undocumented)
+    remove(key: string): Promise<DPoPState>;
+    // (undocumented)
+    set(key: string, value: DPoPState): Promise<void>;
+    // (undocumented)
+    readonly _storeName: string;
 }
 
 // @public (undocumented)
@@ -322,9 +355,11 @@ export class OidcClient {
     // (undocumented)
     clearStaleState(): Promise<void>;
     // (undocumented)
-    createSigninRequest({ state, request, request_uri, request_type, id_token_hint, login_hint, skipUserInfo, nonce, url_state, response_type, scope, redirect_uri, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, extraQueryParams, extraTokenParams, }: CreateSigninRequestArgs): Promise<SigninRequest>;
+    createSigninRequest({ state, request, request_uri, request_type, id_token_hint, login_hint, skipUserInfo, nonce, url_state, response_type, scope, redirect_uri, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, extraQueryParams, extraTokenParams, dpopJkt, omitScopeWhenRequesting, }: CreateSigninRequestArgs): Promise<SigninRequest>;
     // (undocumented)
     createSignoutRequest({ state, id_token_hint, client_id, request_type, post_logout_redirect_uri, extraQueryParams, }?: CreateSignoutRequestArgs): Promise<SignoutRequest>;
+    // (undocumented)
+    getDpopProof(dpopStore: DPoPStore, nonce?: string): Promise<string>;
     // (undocumented)
     protected readonly _logger: Logger;
     // (undocumented)
@@ -332,7 +367,7 @@ export class OidcClient {
     // (undocumented)
     processResourceOwnerPasswordCredentials({ username, password, skipUserInfo, extraTokenParams, }: ProcessResourceOwnerPasswordCredentialsArgs): Promise<SigninResponse>;
     // (undocumented)
-    processSigninResponse(url: string, extraHeaders?: Record<string, ExtraHeader>): Promise<SigninResponse>;
+    processSigninResponse(url: string, extraHeaders?: Record<string, ExtraHeader>, removeState?: boolean): Promise<SigninResponse>;
     // (undocumented)
     processSignoutResponse(url: string): Promise<SignoutResponse>;
     // (undocumented)
@@ -371,6 +406,8 @@ export interface OidcClientSettings {
     client_secret?: string;
     disablePKCE?: boolean;
     display?: string;
+    // Warning: (ae-forgotten-export) The symbol "DPoPSettings" needs to be exported by the entry point index.d.ts
+    dpop?: DPoPSettings | undefined;
     extraHeaders?: Record<string, ExtraHeader>;
     extraQueryParams?: Record<string, string | number | boolean>;
     // (undocumented)
@@ -386,10 +423,12 @@ export interface OidcClientSettings {
     metadataSeed?: Partial<OidcMetadata>;
     // (undocumented)
     metadataUrl?: string;
+    omitScopeWhenRequesting?: boolean;
     post_logout_redirect_uri?: string;
     prompt?: string;
     redirect_uri: string;
     refreshTokenAllowedScope?: string | undefined;
+    requestTimeoutInSeconds?: number | undefined;
     resource?: string | string[];
     response_mode?: "query" | "fragment";
     response_type?: string;
@@ -403,7 +442,7 @@ export interface OidcClientSettings {
 
 // @public
 export class OidcClientSettingsStore {
-    constructor({ authority, metadataUrl, metadata, signingKeys, metadataSeed, client_id, client_secret, response_type, scope, redirect_uri, post_logout_redirect_uri, client_authentication, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, filterProtocolClaims, loadUserInfo, staleStateAgeInSeconds, mergeClaimsStrategy, disablePKCE, stateStore, revokeTokenAdditionalContentTypes, fetchRequestCredentials, refreshTokenAllowedScope, extraQueryParams, extraTokenParams, extraHeaders, }: OidcClientSettings);
+    constructor({ authority, metadataUrl, metadata, signingKeys, metadataSeed, client_id, client_secret, response_type, scope, redirect_uri, post_logout_redirect_uri, client_authentication, prompt, display, max_age, ui_locales, acr_values, resource, response_mode, filterProtocolClaims, loadUserInfo, requestTimeoutInSeconds, staleStateAgeInSeconds, mergeClaimsStrategy, disablePKCE, stateStore, revokeTokenAdditionalContentTypes, fetchRequestCredentials, refreshTokenAllowedScope, extraQueryParams, extraTokenParams, extraHeaders, dpop, omitScopeWhenRequesting, }: OidcClientSettings);
     // (undocumented)
     readonly acr_values: string | undefined;
     // (undocumented)
@@ -418,6 +457,8 @@ export class OidcClientSettingsStore {
     readonly disablePKCE: boolean;
     // (undocumented)
     readonly display: string | undefined;
+    // (undocumented)
+    readonly dpop: DPoPSettings | undefined;
     // (undocumented)
     readonly extraHeaders: Record<string, ExtraHeader>;
     // (undocumented)
@@ -443,6 +484,8 @@ export class OidcClientSettingsStore {
     // (undocumented)
     readonly metadataUrl: string;
     // (undocumented)
+    readonly omitScopeWhenRequesting: boolean;
+    // (undocumented)
     readonly post_logout_redirect_uri: string | undefined;
     // (undocumented)
     readonly prompt: string | undefined;
@@ -450,6 +493,8 @@ export class OidcClientSettingsStore {
     readonly redirect_uri: string;
     // (undocumented)
     readonly refreshTokenAllowedScope: string | undefined;
+    // (undocumented)
+    readonly requestTimeoutInSeconds: number | undefined;
     // (undocumented)
     readonly resource: string | string[] | undefined;
     // (undocumented)
@@ -557,6 +602,7 @@ export interface PopupWindowFeatures {
 
 // @public (undocumented)
 export interface PopupWindowParams {
+    popupSignal?: AbortSignal | null;
     // (undocumented)
     popupWindowFeatures?: PopupWindowFeatures;
     // (undocumented)
@@ -647,7 +693,7 @@ export type SigninRedirectArgs = RedirectParams & ExtraSigninRequestArgs;
 // @public (undocumented)
 export class SigninRequest {
     // (undocumented)
-    static create({ url, authority, client_id, redirect_uri, response_type, scope, state_data, response_mode, request_type, client_secret, nonce, url_state, resource, skipUserInfo, extraQueryParams, extraTokenParams, disablePKCE, ...optionalParams }: SigninRequestCreateArgs): Promise<SigninRequest>;
+    static create({ url, authority, client_id, redirect_uri, response_type, scope, state_data, response_mode, request_type, client_secret, nonce, url_state, resource, skipUserInfo, extraQueryParams, extraTokenParams, disablePKCE, dpopJkt, omitScopeWhenRequesting, ...optionalParams }: SigninRequestCreateArgs): Promise<SigninRequest>;
     // (undocumented)
     readonly state: SigninState;
     // (undocumented)
@@ -669,6 +715,8 @@ export interface SigninRequestCreateArgs {
     // (undocumented)
     display?: string;
     // (undocumented)
+    dpopJkt?: string;
+    // (undocumented)
     extraQueryParams?: Record<string, string | number | boolean>;
     // (undocumented)
     extraTokenParams?: Record<string, unknown>;
@@ -680,6 +728,8 @@ export interface SigninRequestCreateArgs {
     max_age?: number;
     // (undocumented)
     nonce?: string;
+    // (undocumented)
+    omitScopeWhenRequesting?: boolean;
     // (undocumented)
     prompt?: string;
     // (undocumented)
@@ -976,9 +1026,12 @@ export class UserManager {
     clearStaleState(): Promise<void>;
     // (undocumented)
     protected readonly _client: OidcClient;
+    dpopProof(url: string, user: User, httpMethod?: string, nonce?: string): Promise<string | undefined>;
     get events(): UserManagerEvents;
     // (undocumented)
     protected readonly _events: UserManagerEvents;
+    // (undocumented)
+    generateDPoPJkt(dpopSettings: DPoPSettings): Promise<string | undefined>;
     getUser(): Promise<User | null>;
     // (undocumented)
     protected readonly _iframeNavigator: INavigator;
@@ -1016,7 +1069,7 @@ export class UserManager {
     protected _signinStart(args: CreateSigninRequestArgs, handle: IWindow): Promise<NavigateResponse>;
     // (undocumented)
     protected _signout(args: CreateSignoutRequestArgs, handle: IWindow): Promise<SignoutResponse>;
-    signoutCallback(url?: string, keepOpen?: boolean): Promise<void>;
+    signoutCallback(url?: string, keepOpen?: boolean): Promise<SignoutResponse | undefined>;
     // (undocumented)
     protected _signoutEnd(url: string): Promise<SignoutResponse>;
     signoutPopup(args?: SignoutPopupArgs): Promise<void>;
